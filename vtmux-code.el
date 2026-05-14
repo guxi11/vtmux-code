@@ -42,6 +42,13 @@ Persisted via `customize-save-variable'."
   :type '(choice (const right) (const left) (const bottom))
   :group 'vtmux-code)
 
+(defcustom vtmux-code-use-side-window t
+  "When non-nil, display vterm in a dedicated side window.
+Side windows are sticky and won't be replaced by other buffers.
+When nil, use `display-buffer-in-direction' instead."
+  :type 'boolean
+  :group 'vtmux-code)
+
 ;;; Internal State
 
 ;; project-root -> vterm buffer
@@ -156,11 +163,16 @@ Creates tmux session externally first, then vterm attaches to it."
       buf)))
 
 (defun vtmux-code--show-buffer (buf)
-  "Display BUF in a side window."
+  "Display BUF in a side or direction window per `vtmux-code-use-side-window'."
   (display-buffer buf
-                  `((display-buffer-reuse-window display-buffer-in-direction)
-                    (direction . ,vtmux-code-window-side)
-                    (window-width . ,vtmux-code-window-width))))
+                  (if vtmux-code-use-side-window
+                      `((display-buffer-reuse-window display-buffer-in-side-window)
+                        (side . ,vtmux-code-window-side)
+                        (window-width . ,vtmux-code-window-width)
+                        (slot . 0))
+                    `((display-buffer-reuse-window display-buffer-in-direction)
+                      (direction . ,vtmux-code-window-side)
+                      (window-width . ,vtmux-code-window-width)))))
 
 ;;; Interactive Commands — Session
 
