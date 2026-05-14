@@ -208,20 +208,16 @@ Prompts for `vtmux-code-command' if not set."
   (interactive)
   (let* ((root (vtmux-code--project-root))
          (session (vtmux-code--session-name root))
-         (name (file-name-nondirectory (directory-file-name root))))
+         (cur-idx (vtmux-code--tmux "display-message" "-p" "-t" session "#{window_index}")))
     (unless (vtmux-code--session-exists-p session)
       (vtmux-code-toggle))
-    ;; Create window with explicit name (prevents tmux auto-renaming to "git")
-    (vtmux-code--tmux "new-window" "-t" session "-n" name "-c" root)
-    ;; Move to first position: swap if index 0 occupied, move otherwise
-    (let ((target (format "%s:0" session)))
-      (if (zerop (call-process "tmux" nil nil nil
-                               "display-message" "-t" target "-p" ""))
-          (vtmux-code--tmux "swap-window" "-t" target)
-        (vtmux-code--tmux "move-window" "-t" target)))
-    ;; Lock name so tmux doesn't auto-rename via zsh git prompt
-    (vtmux-code--tmux "set-option" "-t" (format "%s:0" session)
-                      "automatic-rename" "off")))
+    ;; Insert new window at index 0 directly — pushes existing windows up
+    (vtmux-code--tmux "new-window" "-t" (format "%s:0" session) "-c" root)
+    ;; Explicit cd so zsh prompt picks up the directory name
+    (vtmux-code--send session (format "cd %s" (shell-quote-argument root)))
+    ;; Restore focus to the previously active window (now shifted by 1)
+    (let ((prev (1+ (string-to-number cur-idx))))
+      (vtmux-code--tmux "select-window" "-t" (format "%s:%d" session prev)))))
 
 ;;; Visible vterm session lookup (decoupled from project)
 
