@@ -207,12 +207,21 @@ Prompts for `vtmux-code-command' if not set."
   "Open a plain shell window at first position in current project's tmux session."
   (interactive)
   (let* ((root (vtmux-code--project-root))
-         (session (vtmux-code--session-name root)))
+         (session (vtmux-code--session-name root))
+         (name (file-name-nondirectory (directory-file-name root))))
     (unless (vtmux-code--session-exists-p session)
       (vtmux-code-toggle))
-    ;; Create new window, then move it to index 0
-    (vtmux-code--tmux "new-window" "-t" session "-c" root)
-    (vtmux-code--tmux "move-window" "-t" (concat session ":0"))))
+    ;; Create window with explicit name (prevents tmux auto-renaming to "git")
+    (vtmux-code--tmux "new-window" "-t" session "-n" name "-c" root)
+    ;; Move to first position: swap if index 0 occupied, move otherwise
+    (let ((target (format "%s:0" session)))
+      (if (zerop (call-process "tmux" nil nil nil
+                               "display-message" "-t" target "-p" ""))
+          (vtmux-code--tmux "swap-window" "-t" target)
+        (vtmux-code--tmux "move-window" "-t" target)))
+    ;; Lock name so tmux doesn't auto-rename via zsh git prompt
+    (vtmux-code--tmux "set-option" "-t" (format "%s:0" session)
+                      "automatic-rename" "off")))
 
 ;;; Visible vterm session lookup (decoupled from project)
 
@@ -268,6 +277,19 @@ Prompts for `vtmux-code-command' if not set."
          (start (line-number-at-pos (region-beginning)))
          (end (line-number-at-pos (region-end))))
     (vtmux-code--type session (format "@%s:%d-%d " path start end))
+    (deactivate-mark)
+    (vtmux-code--focus-vterm)))
+
+;;;###autoload
+(defun vtmux-code-send-text ()
+  "Send selected text into the visible vtmux session and focus it."
+  (interactive)
+  (unless (use-region-p)
+    (user-error "No active region"))
+  (let* ((session (vtmux-code--require-visible-session))
+         (text (buffer-substring-no-properties (region-beginning) (region-end))))
+    (vtmux-code--type session text)
+    (deactivate-mark)
     (vtmux-code--focus-vterm)))
 
 ;;;###autoload
@@ -315,9 +337,10 @@ Prompts for `vtmux-code-command' if not set."
     ("i" "New Claude pane"       vtmux-code-new-pane)
     ("o" "Open shell pane"       vtmux-code-open-shell)]
    ["Send"
-    ("p" "Send file path"  vtmux-code-send-path)
-    ("r" "Send region ref" vtmux-code-send-region)
-    ("s" "Send command"    vtmux-code-send-command)]
+    ("p" "Send file path"    vtmux-code-send-path)
+    ("r" "Send region ref"   vtmux-code-send-region)
+    ("t" "Send selected text" vtmux-code-send-text)
+    ("s" "Send command"      vtmux-code-send-command)]
    ["Quick"
     ("y" "Confirm (Enter)"  vtmux-code-send-return)
     ("n" "Reject (Escape)"  vtmux-code-send-escape)]
