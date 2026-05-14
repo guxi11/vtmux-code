@@ -16,7 +16,6 @@
 (require 'vterm)
 (require 'multi-vterm)
 (require 'transient)
-(require 'project)
 
 ;;; Customization
 
@@ -48,12 +47,21 @@ Persisted via `customize-save-variable'."
 ;; project-root -> vterm buffer
 (defvar vtmux-code--project-buffers (make-hash-table :test 'equal))
 
+;; Stored on each vterm buffer so toggle from vterm knows its root
+(defvar-local vtmux-code--root nil)
+
 ;;; Pure Helpers
 
 (defun vtmux-code--project-root ()
-  "Return project root via `project-current', like `multi-vterm-project'."
-  (project-root
-   (or (project-current) `(transient . ,default-directory))))
+  "Return project root for current context.
+If in a vtmux vterm buffer, return its stored root.
+Otherwise walk up from `default-directory' to find .git."
+  (or vtmux-code--root
+      (let* ((home (expand-file-name "~/"))
+             (root (locate-dominating-file default-directory ".git")))
+        (if (and root (not (string= (expand-file-name root) home)))
+            (expand-file-name root)
+          default-directory))))
 
 (defun vtmux-code--session-name (root)
   "Derive tmux session name from project ROOT."
@@ -72,17 +80,30 @@ Persisted via `customize-save-variable'."
       expanded)))
 
 (defun vtmux-code--live-buffer (root)
-  "Return live vterm buffer for ROOT, or nil."
+  "Return live vterm buffer for ROOT, or nil.
+Checks hash first, then falls back to buffer-name lookup (survives restart)."
   (let ((buf (gethash root vtmux-code--project-buffers)))
-    (when (and buf (buffer-live-p buf))
-      buf)))
+    (if (and buf (buffer-live-p buf))
+        buf
+      ;; Fallback: find existing buffer by expected name
+      (let* ((session (vtmux-code--session-name root))
+             (found (get-buffer (vtmux-code--buffer-name session))))
+        (when (and found (buffer-live-p found))
+          (puthash root found vtmux-code--project-buffers)
+          found)))))
 
 ;;; Command Setup
+
+(defvar vtmux-code--command-history nil
+  "History of vtmux-code commands.")
 
 ;;;###autoload
 (defun vtmux-code-set-command (cmd)
   "Set and persist `vtmux-code-command' to CMD."
-  (interactive "sCode command (e.g. claude --enable-auto-mode): ")
+  (interactive
+   (list (read-string "Code command: "
+                      vtmux-code-command
+                      'vtmux-code--command-history)))
   (customize-save-variable 'vtmux-code-command cmd)
   (message "vtmux-code-command set to: %s" cmd))
 
@@ -126,6 +147,7 @@ Creates tmux session externally first, then vterm attaches to it."
            (default-directory root)
            (buf (multi-vterm)))
       (with-current-buffer buf
+        (setq vtmux-code--root root)
         (rename-buffer buf-name t)
         (vterm-send-string
          (format "tmux attach -t %s" (shell-quote-argument session)))
@@ -192,54 +214,79 @@ Prompts for `vtmux-code-command' if not set."
     (vtmux-code--tmux "new-window" "-t" session "-c" root)
     (vtmux-code--tmux "move-window" "-t" (concat session ":0"))))
 
+;;; Visible vterm session lookup (decoupled from project)
+
+(defun vtmux-code--visible-vterm-window ()
+  "Return the window displaying a vtmux vterm buffer, or nil."
+  (seq-find (lambda (w)
+              (with-current-buffer (window-buffer w)
+                (and (eq major-mode 'vterm-mode)
+                     (string-prefix-p "*vtmux_" (buffer-name)))))
+            (window-list)))
+
+(defun vtmux-code--visible-session ()
+  "Return tmux session name from the visible vterm buffer, or nil."
+  (when-let ((win (vtmux-code--visible-vterm-window)))
+    (with-current-buffer (window-buffer win)
+      (substring (buffer-name) 1 -1))))
+
+(defun vtmux-code--require-visible-session ()
+  "Return visible tmux session or error."
+  (or (vtmux-code--visible-session)
+      (user-error "No visible vtmux-code session")))
+
+(defun vtmux-code--type (session text)
+  "Type TEXT into tmux SESSION without pressing Enter."
+  (vtmux-code--tmux "send-keys" "-t" session "-l" text))
+
+(defun vtmux-code--focus-vterm ()
+  "Select the visible vtmux vterm window."
+  (when-let ((win (vtmux-code--visible-vterm-window)))
+    (select-window win)))
+
 ;;; Interactive Commands — Send
 
 ;;;###autoload
 (defun vtmux-code-send-path ()
-  "Send @<filepath> of current buffer to the active tmux pane.
-Path is relative to project root if inside, absolute otherwise."
+  "Type @<filepath> into the visible vtmux session and focus it."
   (interactive)
-  (let* ((root (vtmux-code--project-root))
-         (session (vtmux-code--session-name root))
+  (let* ((session (vtmux-code--require-visible-session))
+         (root (vtmux-code--project-root))
          (path (vtmux-code--format-path (buffer-file-name) root)))
-    (vtmux-code--send session (format "@%s" path))))
+    (vtmux-code--type session (format "@%s " path))
+    (vtmux-code--focus-vterm)))
 
 ;;;###autoload
 (defun vtmux-code-send-region ()
-  "Send @<filepath>:<start>-<end> of active region to the active tmux pane."
+  "Type @<filepath>:<start>-<end> into the visible vtmux session and focus it."
   (interactive)
   (unless (use-region-p)
     (user-error "No active region"))
-  (let* ((root (vtmux-code--project-root))
-         (session (vtmux-code--session-name root))
+  (let* ((session (vtmux-code--require-visible-session))
+         (root (vtmux-code--project-root))
          (path (vtmux-code--format-path (buffer-file-name) root))
          (start (line-number-at-pos (region-beginning)))
          (end (line-number-at-pos (region-end))))
-    (vtmux-code--send session (format "@%s:%d-%d" path start end))))
+    (vtmux-code--type session (format "@%s:%d-%d " path start end))
+    (vtmux-code--focus-vterm)))
 
 ;;;###autoload
 (defun vtmux-code-send-command (cmd)
-  "Send CMD string to the active tmux pane."
+  "Send CMD string to the visible vtmux session."
   (interactive "sCommand: ")
-  (let* ((root (vtmux-code--project-root))
-         (session (vtmux-code--session-name root)))
-    (vtmux-code--send session cmd)))
+  (vtmux-code--send (vtmux-code--require-visible-session) cmd))
 
 ;;;###autoload
 (defun vtmux-code-send-return ()
-  "Send Enter to the active tmux pane."
+  "Send Enter to the visible vtmux session."
   (interactive)
-  (let* ((root (vtmux-code--project-root))
-         (session (vtmux-code--session-name root)))
-    (vtmux-code--tmux "send-keys" "-t" session "Enter")))
+  (vtmux-code--tmux "send-keys" "-t" (vtmux-code--require-visible-session) "Enter"))
 
 ;;;###autoload
 (defun vtmux-code-send-escape ()
-  "Send Escape to the active tmux pane."
+  "Send Escape to the visible vtmux session."
   (interactive)
-  (let* ((root (vtmux-code--project-root))
-         (session (vtmux-code--session-name root)))
-    (vtmux-code--tmux "send-keys" "-t" session "Escape")))
+  (vtmux-code--tmux "send-keys" "-t" (vtmux-code--require-visible-session) "Escape"))
 
 ;;; Interactive Commands — Manage
 
@@ -263,20 +310,20 @@ Path is relative to project root if inside, absolute otherwise."
 ;;;###autoload (autoload 'vtmux-code-transient "vtmux-code" nil t)
 (transient-define-prefix vtmux-code-transient ()
   "vtmux-code commands."
-  ["Session"
-   ("c" "Toggle Claude session" vtmux-code-toggle)
-   ("i" "New Claude pane"       vtmux-code-new-pane)
-   ("o" "Open shell pane"       vtmux-code-open-shell)]
-  ["Send"
-   ("p" "Send file path"  vtmux-code-send-path)
-   ("r" "Send region ref" vtmux-code-send-region)
-   ("s" "Send command"    vtmux-code-send-command)]
-  ["Quick"
-   ("y" "Confirm (Enter)"  vtmux-code-send-return)
-   ("n" "Reject (Escape)"  vtmux-code-send-escape)]
-  ["Manage"
-   ("k" "Kill session"  vtmux-code-kill)
-   ("=" "Set command"   vtmux-code-set-command)])
+  [["Session"
+    ("c" "Toggle Claude session" vtmux-code-toggle)
+    ("i" "New Claude pane"       vtmux-code-new-pane)
+    ("o" "Open shell pane"       vtmux-code-open-shell)]
+   ["Send"
+    ("p" "Send file path"  vtmux-code-send-path)
+    ("r" "Send region ref" vtmux-code-send-region)
+    ("s" "Send command"    vtmux-code-send-command)]
+   ["Quick"
+    ("y" "Confirm (Enter)"  vtmux-code-send-return)
+    ("n" "Reject (Escape)"  vtmux-code-send-escape)]
+   ["Manage"
+    ("k" "Kill session"  vtmux-code-kill)
+    ("=" "Set command"   vtmux-code-set-command)]])
 
 ;;; Global Minor Mode
 
