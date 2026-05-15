@@ -251,16 +251,14 @@ Prompts for `vtmux-code-command' if not set."
   "Open a plain shell window at first position in current project's tmux session."
   (interactive)
   (let* ((root (vtmux-code--project-root))
-         (session (vtmux-code--session-name root))
-         (cur-idx (vtmux-code--tmux "display-message" "-p" "-t" session "#{window_index}")))
+         (session (vtmux-code--session-name root)))
     (unless (vtmux-code--session-exists-p session)
       (vtmux-code-toggle))
     ;; Insert new window at index 0 directly — pushes existing windows up
     (vtmux-code--tmux "new-window" "-t" (format "%s:0" session) "-c" root)
     (vtmux-code--cd session root)
-    ;; Restore focus to the previously active window (now shifted by 1)
-    (let ((prev (1+ (string-to-number cur-idx))))
-      (vtmux-code--tmux "select-window" "-t" (format "%s:%d" session prev)))))
+    ;; Navigate to the newly created shell window
+    (vtmux-code--tmux "select-window" "-t" (format "%s:0" session))))
 
 ;;; Visible vterm session lookup (decoupled from project)
 
@@ -297,6 +295,18 @@ Prompts for `vtmux-code-command' if not set."
   "Select the visible vtmux vterm window."
   (when-let ((win (vtmux-code--visible-vterm-window)))
     (select-window win)))
+
+;;;###autoload
+(defun vtmux-code-next-window ()
+  "Select next tmux window in the visible session."
+  (interactive)
+  (vtmux-code--tmux "next-window" "-t" (vtmux-code--require-visible-session)))
+
+;;;###autoload
+(defun vtmux-code-prev-window ()
+  "Select previous tmux window in the visible session."
+  (interactive)
+  (vtmux-code--tmux "previous-window" "-t" (vtmux-code--require-visible-session)))
 
 ;;; Interactive Commands — Send
 
@@ -394,7 +404,9 @@ Uses the visible session's project root for relative paths."
    ["Session"
     ("c" "Toggle Claude session" vtmux-code-toggle)
     ("i" "New Claude pane"       vtmux-code-new-pane)
-    ("o" "Open shell pane"       vtmux-code-open-shell)]
+    ("o" "Open shell pane"       vtmux-code-open-shell)
+    ("j" "Prev window"           vtmux-code-prev-window)
+    ("k" "Next window"           vtmux-code-next-window)]
    ["Send"
     ("p" "Send file path"    vtmux-code-send-path)
     ("r" "Send region ref"   vtmux-code-send-region)
@@ -405,7 +417,7 @@ Uses the visible session's project root for relative paths."
     ("n" "Reject (Escape)"  vtmux-code-send-escape)]
    ["Manage"
     ("x" "Kill pane"     vtmux-code-kill-pane)
-    ("k" "Kill session"  vtmux-code-kill)
+    ("K" "Kill session"  vtmux-code-kill)
     ("m" "Modify command" vtmux-code-set-command)]])
 
 ;;; Global Minor Mode
