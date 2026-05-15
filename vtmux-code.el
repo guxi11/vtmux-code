@@ -27,10 +27,14 @@
 (defcustom vtmux-code-command nil
   "Command to launch Claude in new panes.
 When nil, `vtmux-code-toggle' will prompt you to set it.
-Persisted via `customize-save-variable'."
+Persisted to a dedicated file to avoid customize clobbering."
   :type '(choice (const :tag "Not set (will prompt)" nil)
                  (string :tag "Command"))
   :group 'vtmux-code)
+
+(defconst vtmux-code--command-file
+  (expand-file-name "vtmux-code-command" user-emacs-directory)
+  "File storing the persisted vtmux-code-command.")
 
 (defcustom vtmux-code-window-width 90
   "Width of the vterm side window."
@@ -104,6 +108,23 @@ Checks hash first, then falls back to buffer-name lookup (survives restart)."
 (defvar vtmux-code--command-history nil
   "History of vtmux-code commands.")
 
+(defun vtmux-code--save-command (cmd)
+  "Write CMD to `vtmux-code--command-file'."
+  (with-temp-file vtmux-code--command-file
+    (insert cmd "\n")))
+
+(defun vtmux-code--load-command ()
+  "Load command from `vtmux-code--command-file' into `vtmux-code-command'."
+  (when (file-exists-p vtmux-code--command-file)
+    (setq vtmux-code-command
+          (string-trim
+           (with-temp-buffer
+             (insert-file-contents vtmux-code--command-file)
+             (buffer-string))))))
+
+;; Restore on load
+(vtmux-code--load-command)
+
 ;;;###autoload
 (defun vtmux-code-set-command (cmd)
   "Set and persist `vtmux-code-command' to CMD."
@@ -111,7 +132,8 @@ Checks hash first, then falls back to buffer-name lookup (survives restart)."
    (list (read-string "Code command: "
                       (or vtmux-code-command "claude")
                       'vtmux-code--command-history)))
-  (customize-save-variable 'vtmux-code-command cmd)
+  (setq vtmux-code-command cmd)
+  (vtmux-code--save-command cmd)
   (message "vtmux-code-command set to: %s" cmd))
 
 (defun vtmux-code--ensure-command ()
