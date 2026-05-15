@@ -30,8 +30,8 @@ Session
 Send
   p  Send @filepath to active pane
   r  Send @filepath:start-end (region)
-  t  Send selected text
-  s  Send arbitrary command
+  s  Send selected text
+  c  Send arbitrary command
 
 Quick
   y  Confirm (Enter)
@@ -58,7 +58,7 @@ C-c t p  →  tmux send-keys "@filepath" (types without Enter)
 ## Configuration
 
 ```elisp
-(setq vtmux-code-window-width 90)
+(setq vtmux-code-window-width 82)
 (setq vtmux-code-window-side 'right)        ; 'left 'bottom
 (setq vtmux-code-use-side-window t)         ; nil for display-buffer-in-direction
 ```

@@ -319,8 +319,7 @@ files outside that project are sent as absolute paths."
   (let* ((session (vtmux-code--require-visible-session))
          (root (vtmux-code--visible-root))
          (path (vtmux-code--format-path (buffer-file-name) root)))
-    (vtmux-code--type session (format "@%s " path))
-    (vtmux-code--focus-vterm)))
+    (vtmux-code--type session (format "@%s " path))))
 
 ;;;###autoload
 (defun vtmux-code-send-region ()
@@ -335,8 +334,7 @@ Uses the visible session's project root for relative paths."
          (start (line-number-at-pos (region-beginning)))
          (end (line-number-at-pos (region-end))))
     (vtmux-code--type session (format "@%s:%d-%d " path start end))
-    (deactivate-mark)
-    (vtmux-code--focus-vterm)))
+    (deactivate-mark)))
 
 ;;;###autoload
 (defun vtmux-code-send-text ()
@@ -347,14 +345,20 @@ Uses the visible session's project root for relative paths."
   (let* ((session (vtmux-code--require-visible-session))
          (text (buffer-substring-no-properties (region-beginning) (region-end))))
     (vtmux-code--type session text)
-    (deactivate-mark)
-    (vtmux-code--focus-vterm)))
+    (deactivate-mark)))
 
 ;;;###autoload
 (defun vtmux-code-send-command (cmd)
-  "Send CMD string to the visible vtmux session."
+  "Type CMD into the visible vtmux session without pressing Enter."
   (interactive "sCommand: ")
-  (vtmux-code--send (vtmux-code--require-visible-session) cmd))
+  (vtmux-code--type (vtmux-code--require-visible-session) cmd))
+
+;;;###autoload
+(defun vtmux-code-focus ()
+  "Select the visible vtmux vterm window."
+  (interactive)
+  (or (vtmux-code--focus-vterm)
+      (user-error "No visible vtmux-code session")))
 
 ;;;###autoload
 (defun vtmux-code-send-return ()
@@ -410,11 +414,12 @@ Uses the visible session's project root for relative paths."
    ["Send"
     ("p" "Send file path"    vtmux-code-send-path)
     ("r" "Send region ref"   vtmux-code-send-region)
-    ("c" "Send selected text" vtmux-code-send-text)
-    ("s" "Send command"      vtmux-code-send-command)]
+    ("s" "Send selected text" vtmux-code-send-text)
+    ("c" "Send command"      vtmux-code-send-command)]
    ["Quick"
     ("y" "Confirm (Enter)"  vtmux-code-send-return)
-    ("n" "Reject (Escape)"  vtmux-code-send-escape)]
+    ("n" "Reject (Escape)"  vtmux-code-send-escape)
+    ("e" "Enter vterm"      vtmux-code-focus)]
    ["Manage"
     ("x" "Kill pane"     vtmux-code-kill-pane)
     ("K" "Kill session"  vtmux-code-kill)
