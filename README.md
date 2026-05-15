@@ -21,7 +21,7 @@ Requires `tmux` in PATH.
 
 ```
 Session
-  c  Toggle Claude session
+  t  Toggle Claude session
   i  New Claude pane (named)
   o  Open shell pane (first position)
   j  Prev window
@@ -46,7 +46,7 @@ Manage
 ## How it works
 
 ```
-C-c t c  →  multi-vterm buffer  →  tmux new-session -s vtmux:<project>
+C-c t t  →  multi-vterm buffer  →  tmux new-session -s vtmux:<project>
 C-c t i  →  tmux new-window     →  runs claude command in new window
 C-c t p  →  tmux send-keys "@filepath" (types without Enter)
 ```

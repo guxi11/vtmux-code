@@ -402,7 +402,7 @@ Uses the visible session's project root for relative paths."
              (propertize (or vtmux-code-command "unset")
                          'face 'transient-value)))
    ["Session"
-    ("c" "Toggle Claude session" vtmux-code-toggle)
+    ("t" "Toggle Claude session" vtmux-code-toggle)
     ("i" "New Claude pane"       vtmux-code-new-pane)
     ("o" "Open shell pane"       vtmux-code-open-shell)
     ("j" "Prev window"           vtmux-code-prev-window)
@@ -410,7 +410,7 @@ Uses the visible session's project root for relative paths."
    ["Send"
     ("p" "Send file path"    vtmux-code-send-path)
     ("r" "Send region ref"   vtmux-code-send-region)
-    ("t" "Send selected text" vtmux-code-send-text)
+    ("c" "Send selected text" vtmux-code-send-text)
     ("s" "Send command"      vtmux-code-send-command)]
    ["Quick"
     ("y" "Confirm (Enter)"  vtmux-code-send-return)
