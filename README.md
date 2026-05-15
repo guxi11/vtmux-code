@@ -79,6 +79,10 @@ C-c t p  →  tmux send-keys "@filepath" Enter
 
 Or use `M-x customize-group RET vtmux-code`.
 
+## Activities.el Integration
+
+When used with [activities.el](https://github.com/alphapapa/activities.el), vtmux vterm buffers are automatically re-attached to their tmux sessions after an activity is resumed (e.g. after Emacs restart). No extra configuration needed — the advice is set up via `with-eval-after-load` and only activates if activities is loaded.
+
 ## License
 
 GPL-3.0

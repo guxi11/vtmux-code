@@ -27,14 +27,10 @@
 (defcustom vtmux-code-command nil
   "Command to launch Claude in new panes.
 When nil, `vtmux-code-toggle' will prompt you to set it.
-Persisted to a dedicated file to avoid customize clobbering."
+Persisted via `customize-save-variable' to custom file."
   :type '(choice (const :tag "Not set (will prompt)" nil)
                  (string :tag "Command"))
   :group 'vtmux-code)
-
-(defconst vtmux-code--command-file
-  (expand-file-name "vtmux-code-command" user-emacs-directory)
-  "File storing the persisted vtmux-code-command.")
 
 (defcustom vtmux-code-window-width 90
   "Width of the vterm side window."
@@ -109,21 +105,8 @@ Checks hash first, then falls back to buffer-name lookup (survives restart)."
   "History of vtmux-code commands.")
 
 (defun vtmux-code--save-command (cmd)
-  "Write CMD to `vtmux-code--command-file'."
-  (with-temp-file vtmux-code--command-file
-    (insert cmd "\n")))
-
-(defun vtmux-code--load-command ()
-  "Load command from `vtmux-code--command-file' into `vtmux-code-command'."
-  (when (file-exists-p vtmux-code--command-file)
-    (setq vtmux-code-command
-          (string-trim
-           (with-temp-buffer
-             (insert-file-contents vtmux-code--command-file)
-             (buffer-string))))))
-
-;; Restore on load
-(vtmux-code--load-command)
+  "Persist CMD via `customize-save-variable'."
+  (customize-save-variable 'vtmux-code-command cmd))
 
 ;;;###autoload
 (defun vtmux-code-set-command (cmd)
@@ -133,8 +116,7 @@ Checks hash first, then falls back to buffer-name lookup (survives restart)."
                       (or vtmux-code-command "claude")
                       'vtmux-code--command-history)))
   (setq vtmux-code-command cmd)
-  (vtmux-code--save-command cmd)
-  (message "vtmux-code-command set to: %s" cmd))
+  (vtmux-code--save-command cmd))
 
 (defun vtmux-code--ensure-command ()
   "Ensure `vtmux-code-command' is set, prompt if nil.  Return the command."
@@ -420,6 +402,36 @@ Binds \\`C-c t' to the vtmux-code transient menu."
   :global t
   :lighter " VTX"
   :keymap vtmux-code-mode-map)
+
+;;; Activities Integration
+;; After activities.el restores a session, vtmux vterm buffers get a live
+;; shell via vterm's bookmark handler but lose the tmux attach and buffer-local
+;; state.  Re-attach them automatically.
+
+(defun vtmux-code--reattach-after-resume (&rest _)
+  "Re-attach vtmux vterm buffers to their tmux sessions."
+  (run-with-timer
+   0.5 nil
+   (lambda ()
+     (dolist (buf (buffer-list))
+       (let ((name (buffer-name buf)))
+         (when (and (string-match "\\`\\*\\(vtmux_\\(.+\\)\\)\\*\\'" name)
+                    (buffer-live-p buf)
+                    (get-buffer-process buf)
+                    (not (buffer-local-value 'vtmux-code--root buf)))
+           (let ((session (match-string 1 name)))
+             (with-current-buffer buf
+               (setq vtmux-code--root (or (locate-dominating-file default-directory ".git")
+                                          default-directory))
+               (puthash vtmux-code--root buf vtmux-code--project-buffers)
+               (vterm-send-string (format "tmux attach -t %s" (shell-quote-argument session)))
+               (vterm-send-return)))))))))
+
+(with-eval-after-load 'activities
+  (advice-add 'activities-resume :after #'vtmux-code--reattach-after-resume)
+  (advice-add 'activities-set :after #'vtmux-code--reattach-after-resume))
+(with-eval-after-load 'activities-tabs
+  (advice-add 'activities-tabs--switch :after #'vtmux-code--reattach-after-resume))
 
 (provide 'vtmux-code)
 ;;; vtmux-code.el ends here
