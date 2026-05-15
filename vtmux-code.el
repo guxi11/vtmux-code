@@ -275,6 +275,12 @@ Prompts for `vtmux-code-command' if not set."
     (with-current-buffer (window-buffer win)
       (substring (buffer-name) 1 -1))))
 
+(defun vtmux-code--visible-root ()
+  "Return project root from the visible vterm buffer, or nil."
+  (when-let ((win (vtmux-code--visible-vterm-window)))
+    (with-current-buffer (window-buffer win)
+      vtmux-code--root)))
+
 (defun vtmux-code--require-visible-session ()
   "Return visible tmux session or error."
   (or (vtmux-code--visible-session)
@@ -293,22 +299,25 @@ Prompts for `vtmux-code-command' if not set."
 
 ;;;###autoload
 (defun vtmux-code-send-path ()
-  "Type @<filepath> into the visible vtmux session and focus it."
+  "Type @<filepath> into the visible vtmux session and focus it.
+Uses the visible session's project root for relative paths;
+files outside that project are sent as absolute paths."
   (interactive)
   (let* ((session (vtmux-code--require-visible-session))
-         (root (vtmux-code--project-root))
+         (root (vtmux-code--visible-root))
          (path (vtmux-code--format-path (buffer-file-name) root)))
     (vtmux-code--type session (format "@%s " path))
     (vtmux-code--focus-vterm)))
 
 ;;;###autoload
 (defun vtmux-code-send-region ()
-  "Type @<filepath>:<start>-<end> into the visible vtmux session and focus it."
+  "Type @<filepath>:<start>-<end> into the visible vtmux session and focus it.
+Uses the visible session's project root for relative paths."
   (interactive)
   (unless (use-region-p)
     (user-error "No active region"))
   (let* ((session (vtmux-code--require-visible-session))
-         (root (vtmux-code--project-root))
+         (root (vtmux-code--visible-root))
          (path (vtmux-code--format-path (buffer-file-name) root))
          (start (line-number-at-pos (region-beginning)))
          (end (line-number-at-pos (region-end))))
