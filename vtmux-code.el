@@ -150,9 +150,11 @@ Creates tmux session externally first, then vterm attaches to it."
       (let ((cmd (vtmux-code--ensure-command)))
         (vtmux-code--send session cmd)))
     ;; Phase 2: create vterm and attach
+    ;; save-window-excursion: multi-vterm calls switch-to-buffer internally;
+    ;; suppress that so vtmux-code--show-buffer controls placement.
     (let* ((buf-name (vtmux-code--buffer-name session))
            (default-directory root)
-           (buf (multi-vterm)))
+           (buf (save-window-excursion (multi-vterm))))
       (with-current-buffer buf
         (setq vtmux-code--root root)
         (rename-buffer buf-name t)
@@ -166,10 +168,11 @@ Creates tmux session externally first, then vterm attaches to it."
   "Display BUF in a side or direction window per `vtmux-code-use-side-window'."
   (display-buffer buf
                   (if vtmux-code-use-side-window
-                      `((display-buffer-reuse-window display-buffer-in-side-window)
+                      `((display-buffer-in-side-window)
                         (side . ,vtmux-code-window-side)
                         (window-width . ,vtmux-code-window-width)
-                        (slot . 0))
+                        (slot . 0)
+                        (dedicated . t))
                     `((display-buffer-reuse-window display-buffer-in-direction)
                       (direction . ,vtmux-code-window-side)
                       (window-width . ,vtmux-code-window-width)))))
