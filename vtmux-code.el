@@ -109,7 +109,7 @@ Checks hash first, then falls back to buffer-name lookup (survives restart)."
   "Set and persist `vtmux-code-command' to CMD."
   (interactive
    (list (read-string "Code command: "
-                      vtmux-code-command
+                      (or vtmux-code-command "claude")
                       'vtmux-code--command-history)))
   (customize-save-variable 'vtmux-code-command cmd)
   (message "vtmux-code-command set to: %s" cmd))
@@ -146,7 +146,8 @@ Creates tmux session externally first, then vterm attaches to it."
     (unless existed
       (call-process "tmux" nil nil nil
                     "new-session" "-d" "-s" session "-c" root)
-      ;; Send claude command now — detached session shell is ready
+      ;; Explicit cd so Claude Code resolves the project name correctly
+      (vtmux-code--send session (format "cd %s" (shell-quote-argument root)))
       (let ((cmd (vtmux-code--ensure-command)))
         (vtmux-code--send session cmd)))
     ;; Phase 2: create vterm and attach
@@ -215,6 +216,8 @@ Prompts for `vtmux-code-command' if not set."
     (vtmux-code--tmux "new-window" "-t" session "-c" root)
     (unless (string-empty-p name)
       (vtmux-code--tmux "rename-window" "-t" session name))
+    ;; Explicit cd so Claude Code resolves the project name correctly
+    (vtmux-code--send session (format "cd %s" (shell-quote-argument root)))
     (vtmux-code--send session cmd)))
 
 ;;;###autoload
@@ -324,6 +327,12 @@ Prompts for `vtmux-code-command' if not set."
 ;;; Interactive Commands — Manage
 
 ;;;###autoload
+(defun vtmux-code-kill-pane ()
+  "Kill the active tmux window in the visible session."
+  (interactive)
+  (vtmux-code--tmux "kill-window" "-t" (vtmux-code--require-visible-session)))
+
+;;;###autoload
 (defun vtmux-code-kill ()
   "Kill tmux session and vterm buffer for current project."
   (interactive)
@@ -343,7 +352,12 @@ Prompts for `vtmux-code-command' if not set."
 ;;;###autoload (autoload 'vtmux-code-transient "vtmux-code" nil t)
 (transient-define-prefix vtmux-code-transient ()
   "vtmux-code commands."
-  [["Session"
+  [:description
+   (lambda ()
+     (format "vtmux-code [cmd: %s]"
+             (propertize (or vtmux-code-command "unset")
+                         'face 'transient-value)))
+   ["Session"
     ("c" "Toggle Claude session" vtmux-code-toggle)
     ("i" "New Claude pane"       vtmux-code-new-pane)
     ("o" "Open shell pane"       vtmux-code-open-shell)]
@@ -356,8 +370,9 @@ Prompts for `vtmux-code-command' if not set."
     ("y" "Confirm (Enter)"  vtmux-code-send-return)
     ("n" "Reject (Escape)"  vtmux-code-send-escape)]
    ["Manage"
+    ("x" "Kill pane"     vtmux-code-kill-pane)
     ("k" "Kill session"  vtmux-code-kill)
-    ("=" "Set command"   vtmux-code-set-command)]])
+    ("m" "Modify command" vtmux-code-set-command)]])
 
 ;;; Global Minor Mode
 
