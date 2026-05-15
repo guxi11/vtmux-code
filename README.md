@@ -28,7 +28,7 @@ Requires `tmux` in PATH.
 ;; vtmux-code
 (add-to-list 'load-path "/path/to/vtmux-code")
 (require 'vtmux-code)
-(vtmux-code-setup-keys)  ; binds C-c t
+(vtmux-code-mode 1)  ; binds C-c t
 ```
 
 ## Usage
@@ -64,20 +64,19 @@ C-c t p  →  tmux send-keys "@filepath" Enter
 
 - Project root detected via `vc-git-root`, falls back to `default-directory`
 - File paths are relative inside project, absolute outside
-- Claude command is customizable and persists via `M-x customize`
+- Claude command is prompted on first use, persisted to `~/.emacs.d/vtmux-code-command`
 
 ## Configuration
 
 ```elisp
-;; Set your claude command (persists in custom-file)
-(setq vtmux-code-command "claude --enable-auto-mode")
-
 ;; Window placement
 (setq vtmux-code-window-width 90)
 (setq vtmux-code-window-side 'right)  ; 'left 'bottom
 ```
 
-Or use `M-x customize-group RET vtmux-code`.
+The Claude command is prompted on first use and persisted to `~/.emacs.d/vtmux-code-command`. Change it anytime with `M-x vtmux-code-set-command` or `C-c t m`.
+
+> **Why not customize?** `customize-save-variable` is unreliable for deferred packages — any early `custom-save-all` (e.g. from `package-selected-packages`) rewrites `custom-file` and drops variables whose `defcustom` hasn't evaluated yet.
 
 ## Activities.el Integration
 

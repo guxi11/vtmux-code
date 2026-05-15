@@ -27,10 +27,15 @@
 (defcustom vtmux-code-command nil
   "Command to launch Claude in new panes.
 When nil, `vtmux-code-toggle' will prompt you to set it.
-Persisted via `customize-save-variable' to custom file."
+Persisted to a dedicated file (immune to customize-save-all clobbering
+when defcustom loads on a deferred timer)."
   :type '(choice (const :tag "Not set (will prompt)" nil)
                  (string :tag "Command"))
   :group 'vtmux-code)
+
+(defconst vtmux-code--command-file
+  (expand-file-name "vtmux-code-command" user-emacs-directory)
+  "File storing the persisted vtmux-code-command.")
 
 (defcustom vtmux-code-window-width 90
   "Width of the vterm side window."
@@ -105,8 +110,21 @@ Checks hash first, then falls back to buffer-name lookup (survives restart)."
   "History of vtmux-code commands.")
 
 (defun vtmux-code--save-command (cmd)
-  "Persist CMD via `customize-save-variable'."
-  (customize-save-variable 'vtmux-code-command cmd))
+  "Write CMD to `vtmux-code--command-file'."
+  (with-temp-file vtmux-code--command-file
+    (insert cmd "\n")))
+
+(defun vtmux-code--load-command ()
+  "Load command from `vtmux-code--command-file' into `vtmux-code-command'."
+  (when (file-exists-p vtmux-code--command-file)
+    (setq vtmux-code-command
+          (string-trim
+           (with-temp-buffer
+             (insert-file-contents vtmux-code--command-file)
+             (buffer-string))))))
+
+;; Restore on load
+(vtmux-code--load-command)
 
 ;;;###autoload
 (defun vtmux-code-set-command (cmd)
@@ -140,6 +158,12 @@ Checks hash first, then falls back to buffer-name lookup (survives restart)."
   "Send TEXT to active pane of tmux SESSION."
   (vtmux-code--tmux "send-keys" "-t" session text "Enter"))
 
+(defun vtmux-code--cd (session root)
+  "Cd to ROOT in tmux SESSION, then clear.
+Expands ROOT so shell-quote-argument won't escape ~."
+  (vtmux-code--send session (format "cd %s" (shell-quote-argument (expand-file-name root))))
+  (vtmux-code--send session "clear"))
+
 ;;; Session Management
 
 (defun vtmux-code--create-session (root session)
@@ -150,8 +174,7 @@ Creates tmux session externally first, then vterm attaches to it."
     (unless existed
       (call-process "tmux" nil nil nil
                     "new-session" "-d" "-s" session "-c" root)
-      ;; Explicit cd so Claude Code resolves the project name correctly
-      (vtmux-code--send session (format "cd %s" (shell-quote-argument root)))
+      (vtmux-code--cd session root)
       (let ((cmd (vtmux-code--ensure-command)))
         (vtmux-code--send session cmd)))
     ;; Phase 2: create vterm and attach
@@ -220,8 +243,7 @@ Prompts for `vtmux-code-command' if not set."
     (vtmux-code--tmux "new-window" "-t" session "-c" root)
     (unless (string-empty-p name)
       (vtmux-code--tmux "rename-window" "-t" session name))
-    ;; Explicit cd so Claude Code resolves the project name correctly
-    (vtmux-code--send session (format "cd %s" (shell-quote-argument root)))
+    (vtmux-code--cd session root)
     (vtmux-code--send session cmd)))
 
 ;;;###autoload
@@ -235,8 +257,7 @@ Prompts for `vtmux-code-command' if not set."
       (vtmux-code-toggle))
     ;; Insert new window at index 0 directly — pushes existing windows up
     (vtmux-code--tmux "new-window" "-t" (format "%s:0" session) "-c" root)
-    ;; Explicit cd so zsh prompt picks up the directory name
-    (vtmux-code--send session (format "cd %s" (shell-quote-argument root)))
+    (vtmux-code--cd session root)
     ;; Restore focus to the previously active window (now shifted by 1)
     (let ((prev (1+ (string-to-number cur-idx))))
       (vtmux-code--tmux "select-window" "-t" (format "%s:%d" session prev)))))
