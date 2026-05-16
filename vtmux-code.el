@@ -77,7 +77,7 @@ Otherwise walk up from `default-directory' to find .git."
 
 (defun vtmux-code--session-name (root)
   "Derive tmux session name from project ROOT."
-  (concat "vtmux_" (file-name-nondirectory (directory-file-name root))))
+  (concat "_" (file-name-nondirectory (directory-file-name root))))
 
 (defun vtmux-code--buffer-name (session)
   "Buffer name for tmux SESSION."
@@ -267,7 +267,7 @@ Prompts for `vtmux-code-command' if not set."
   (seq-find (lambda (w)
               (with-current-buffer (window-buffer w)
                 (and (eq major-mode 'vterm-mode)
-                     (string-prefix-p "*vtmux_" (buffer-name)))))
+                     (string-prefix-p "*_" (buffer-name)))))
             (window-list)))
 
 (defun vtmux-code--visible-session ()
@@ -409,8 +409,8 @@ Uses the visible session's project root for relative paths."
     ("t" "Toggle Claude session" vtmux-code-toggle)
     ("i" "New Claude pane"       vtmux-code-new-pane)
     ("o" "Open shell pane"       vtmux-code-open-shell)
-    ("j" "Prev window"           vtmux-code-prev-window)
-    ("k" "Next window"           vtmux-code-next-window)]
+    ("j" "Prev window"           vtmux-code-prev-window :transient t)
+    ("k" "Next window"           vtmux-code-next-window :transient t)]
    ["Send"
     ("p" "Send file path"    vtmux-code-send-path)
     ("r" "Send region ref"   vtmux-code-send-region)
@@ -423,7 +423,8 @@ Uses the visible session's project root for relative paths."
    ["Manage"
     ("x" "Kill pane"     vtmux-code-kill-pane)
     ("K" "Kill session"  vtmux-code-kill)
-    ("m" "Modify command" vtmux-code-set-command)]])
+    ("m" "Modify command" vtmux-code-set-command)
+    ("q" "Quit menu"     transient-quit-one)]])
 
 ;;; Global Minor Mode
 
@@ -453,7 +454,7 @@ Binds \\`C-c t' to the vtmux-code transient menu."
    (lambda ()
      (dolist (buf (buffer-list))
        (let ((name (buffer-name buf)))
-         (when (and (string-match "\\`\\*\\(vtmux_\\(.+\\)\\)\\*\\'" name)
+         (when (and (string-match "\\`\\*\\(_\\(.+\\)\\)\\*\\'" name)
                     (buffer-live-p buf)
                     (get-buffer-process buf)
                     (not (buffer-local-value 'vtmux-code--root buf)))
