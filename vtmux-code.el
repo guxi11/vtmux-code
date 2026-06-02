@@ -193,20 +193,23 @@ Creates tmux session externally first, then vterm attaches to it."
       buf)))
 
 (defun vtmux-code--show-buffer (buf)
-  "Display BUF in a side or direction window per `vtmux-code-use-side-window'."
-  (let ((display-buffer-overriding-action nil))
-    (display-buffer buf
-                    (if vtmux-code-use-side-window
-                        `((display-buffer-in-side-window)
-                          (side . ,vtmux-code-window-side)
-                          (window-width . ,vtmux-code-window-width)
-                          (slot . 0)
-                          (dedicated . t)
-                          (inhibit-same-window . t))
-                      `((display-buffer-reuse-window display-buffer-in-direction)
-                        (direction . ,vtmux-code-window-side)
-                        (window-width . ,vtmux-code-window-width)
-                        (inhibit-same-window . t))))))
+  "Display BUF in a side or direction window per `vtmux-code-use-side-window'.
+Uses `display-buffer-overriding-action' (highest priority) so that user's
+`display-buffer-alist' entries for vterm buffers cannot intercept the call."
+  (let ((display-buffer-overriding-action
+         (if vtmux-code-use-side-window
+             `((display-buffer-in-side-window)
+               (side . ,vtmux-code-window-side)
+               (window-width . ,vtmux-code-window-width)
+               (slot . 0)
+               (dedicated . t)
+               (inhibit-same-window . t))
+           `((display-buffer-in-direction)
+             (direction . ,vtmux-code-window-side)
+             (window . root)
+             (window-width . ,vtmux-code-window-width)
+             (inhibit-same-window . t)))))
+    (display-buffer buf nil)))
 
 ;;; Interactive Commands — Session
 
