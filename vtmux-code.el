@@ -192,24 +192,38 @@ Creates tmux session externally first, then vterm attaches to it."
       (puthash root buf vtmux-code--project-buffers)
       buf)))
 
+(defun vtmux-code--split-root (buf)
+  "Split frame root toward `vtmux-code-window-side' and show BUF there.
+Bypasses `display-buffer-in-direction', which reuses any window already
+sitting in the requested direction — the root cause of the multi-window
+toggle bug."
+  (let* ((horizontal (memq vtmux-code-window-side '(left right)))
+         (size (if horizontal
+                   (- vtmux-code-window-width)
+                 -15))
+         (new-win (split-window (frame-root-window) size vtmux-code-window-side)))
+    (set-window-buffer new-win buf)
+    new-win))
+
 (defun vtmux-code--show-buffer (buf)
-  "Display BUF in a side or direction window per `vtmux-code-use-side-window'.
-Uses `display-buffer-overriding-action' (highest priority) so that user's
-`display-buffer-alist' entries for vterm buffers cannot intercept the call."
-  (let ((display-buffer-overriding-action
-         (if vtmux-code-use-side-window
+  "Display BUF on `vtmux-code-window-side' in a freshly created window.
+Wipes any existing windows showing BUF first so placement is deterministic
+regardless of how many windows the frame currently holds."
+  (dolist (win (get-buffer-window-list buf nil t))
+    (when (window-live-p win)
+      (delete-window win)))
+  (if vtmux-code-use-side-window
+      ;; Side windows live at frame edge; `display-buffer-in-side-window'
+      ;; only reuses other side windows at the same (side, slot), never
+      ;; regular windows.
+      (let ((display-buffer-overriding-action
              `((display-buffer-in-side-window)
                (side . ,vtmux-code-window-side)
                (window-width . ,vtmux-code-window-width)
                (slot . 0)
-               (dedicated . t)
-               (inhibit-same-window . t))
-           `((display-buffer-in-direction)
-             (direction . ,vtmux-code-window-side)
-             (window . root)
-             (window-width . ,vtmux-code-window-width)
-             (inhibit-same-window . t)))))
-    (display-buffer buf nil)))
+               (window-parameters . ((no-delete-other-windows . t))))))
+        (display-buffer buf nil))
+    (vtmux-code--split-root buf)))
 
 ;;; Interactive Commands — Session
 
